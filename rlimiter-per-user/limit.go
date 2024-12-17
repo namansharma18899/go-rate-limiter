@@ -41,6 +41,8 @@ func perUserRateLimiter(next func(writer http.ResponseWriter, request *http.Requ
 			}
 			w.WriteHeader(http.StatusTooManyRequests)
 			json.NewEncoder(w).Encode(&message)
+		} else {
+			next(w, r)
 		}
 	})
 }
