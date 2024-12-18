@@ -15,15 +15,25 @@ type Client struct {
 	lastVisited time.Time
 }
 
-// We need to have a map of clients
-// globalMapOfClients := make(map[string]Client)
-
 var clients = make(map[string]*Client)
+var mu sync.Mutex
 
-func perUserRateLimiter(next func(writer http.ResponseWriter, request *http.Request)) http.Handler {
+func CreateRateLimiterFromConfig(config *RateLimiterConfig) *rate.Limiter {
+	limit := rate.Limit(config.Rate)
+	return rate.NewLimiter(limit, config.Burst)
+}
+
+func InitializeRateLimiter(configPath string) (*rate.Limiter, error) {
+	config, err := LoadRateLimiterConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return CreateRateLimiterFromConfig(config), nil
+}
+
+func perUserRateLimiter(next func(writer http.ResponseWriter, request *http.Request), config *RateLimiterConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIp, _, err := net.SplitHostPort(r.RemoteAddr)
-		var mu sync.Mutex
 		if err != nil {
 			return
 		}
@@ -31,7 +41,7 @@ func perUserRateLimiter(next func(writer http.ResponseWriter, request *http.Requ
 		map & can be accessed by other calls.. */
 		mu.Lock()
 		if _, exists := clients[clientIp]; !exists {
-			clients[clientIp] = &Client{limiter: rate.NewLimiter(2, 40)}
+			clients[clientIp] = &Client{limiter: CreateRateLimiterFromConfig(config)}
 		}
 		clients[clientIp].lastVisited = time.Now()
 		mu.Unlock()
